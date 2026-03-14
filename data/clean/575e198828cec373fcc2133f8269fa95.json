@@ -1,6 +1,6 @@
 {
-  "url": "https://books.toscrape.com",
-  "title": "All products | Books to Scrape - Sandbox",
+  "url": "https://books.toscrape.com/catalogue/category/books_1/index.html",
+  "title": "Books | \n     Books to Scrape - Sandbox",
   "links": [
     "https://books.toscrape.com/catalogue/category/books/poetry_23/index.html",
     "https://books.toscrape.com/catalogue/category/books/food-and-drink_33/index.html",
@@ -16,6 +16,7 @@
     "https://books.toscrape.com/catalogue/scott-pilgrims-precious-little-life-scott-pilgrim-1_987/index.html",
     "https://books.toscrape.com/catalogue/category/books/mystery_3/index.html",
     "https://books.toscrape.com/index.html",
+    "https://books.toscrape.com/catalogue/category/books_1/page-2.html",
     "https://books.toscrape.com/catalogue/category/books/historical_42/index.html",
     "https://books.toscrape.com/catalogue/category/books/classics_6/index.html",
     "https://books.toscrape.com/catalogue/category/books/adult-fiction_29/index.html",
@@ -37,7 +38,6 @@
     "https://books.toscrape.com/catalogue/the-dirty-little-secrets-of-getting-your-dream-job_994/index.html",
     "https://books.toscrape.com/catalogue/our-band-could-be-your-life-scenes-from-the-american-indie-underground-1981-1991_985/index.html",
     "https://books.toscrape.com/catalogue/category/books/romance_8/index.html",
-    "https://books.toscrape.com/catalogue/page-2.html",
     "https://books.toscrape.com/catalogue/category/books/womens-fiction_9/index.html",
     "https://books.toscrape.com/catalogue/category/books/parenting_28/index.html",
     "https://books.toscrape.com/catalogue/category/books/childrens_11/index.html",
@@ -78,7 +78,7 @@
   ],
   "tokens": [
     "home",
-    "product",
+    "book",
     "book",
     "travel",
     "mysteri",
@@ -143,7 +143,7 @@
     "cultur",
     "erotica",
     "crime",
-    "product",
+    "book",
     "result",
     "show",
     "warn",

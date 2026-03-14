@@ -1,5 +1,5 @@
 {
-  "url": "https://books.toscrape.com",
+  "url": "https://books.toscrape.com/index.html",
   "title": "All products | Books to Scrape - Sandbox",
   "links": [
     "https://books.toscrape.com/catalogue/category/books/poetry_23/index.html",
