@@ -127,3 +127,15 @@ def suggest(q: str = Query("", min_length=1)):
     ]
     matches.sort(key=lambda t: (-index.get_doc_frequency(t), t))
     return {"suggestions": matches[:8]}
+
+from indexer.query import get_cache_stats, clear_cache
+
+@app.get("/cache/stats", summary="Query cache statistics")
+def cache_stats():
+    return get_cache_stats()
+
+
+@app.get("/cache/clear", summary="Clear the query cache")
+def cache_clear():
+    clear_cache()
+    return {"status": "ok", "message": "Cache cleared"}

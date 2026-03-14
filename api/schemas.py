@@ -12,13 +12,14 @@ class SearchResult(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    query: str
-    tokens: list[str]
-    missing: list[str]
-    mode: str
+    query:      str
+    tokens:     list[str]
+    missing:    list[str]
+    mode:       str
     total_hits: int
-    results: list[SearchResult]
+    results:    list[SearchResult]
     elapsed_ms: float
+    cached:     bool = False
 
 
 class HealthResponse(BaseModel):

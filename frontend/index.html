@@ -437,10 +437,12 @@
     hideAll();
 
     metaEl.style.display = "block";
-    metaEl.textContent =
-      `About ${data.total_hits.toLocaleString()} result${data.total_hits !== 1 ? "s" : ""} ` +
-      `(${data.elapsed_ms}ms)` +
-      (data.missing.length ? `  —  terms not found: ${data.missing.join(", ")}` : "");
+    // in renderResults(), replace the metaEl.textContent line with:
+metaEl.innerHTML =
+    `About ${data.total_hits.toLocaleString()} result${data.total_hits !== 1 ? "s" : ""} ` +
+    `(${data.elapsed_ms}ms)` +
+    (data.cached ? ' <span style="background:#e6f4ea;color:#137333;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;margin-left:6px;">cached</span>' : "") +
+    (data.missing.length ? `  —  terms not found: ${data.missing.join(", ")}` : "");
 
     if (!data.results.length) { emptyEl.style.display = "block"; return; }
 
