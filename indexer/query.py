@@ -3,20 +3,30 @@ from pathlib import Path
 
 from indexer.bm25 import BM25
 from indexer.index import InvertedIndex
+from indexer.database import get_pagerank_score, get_stats as db_stats
 from indexer.text_processor import process
 
 INDEX_PATH = Path("data/index.json")
 
+BM25_WEIGHT      = 0.7
+PAGERANK_WEIGHT  = 0.3
+
 _index: InvertedIndex | None = None
-_bm25: BM25 | None = None
+_bm25:  BM25 | None          = None
 
 
 def _get_engine() -> tuple[InvertedIndex, BM25]:
     global _index, _bm25
     if _index is None:
         _index = InvertedIndex.load(INDEX_PATH)
-        _bm25 = BM25(_index)
+        _bm25  = BM25(_index)
     return _index, _bm25
+
+
+def _blend(bm25_score: float, url: str, bm25_max: float) -> float:
+    normalised_bm25 = bm25_score / bm25_max if bm25_max > 0 else 0.0
+    pr_score        = get_pagerank_score(url)
+    return round(BM25_WEIGHT * normalised_bm25 + PAGERANK_WEIGHT * pr_score, 4)
 
 
 def search(
@@ -32,8 +42,8 @@ def search(
     if not tokens:
         return _empty_result(query_str, tokens, start)
 
-    missing = [t for t in tokens if not index.contains(t)]
-    active_tokens = [t for t in tokens if index.contains(t)]
+    missing        = [t for t in tokens if not index.contains(t)]
+    active_tokens  = [t for t in tokens if index.contains(t)]
 
     if not active_tokens:
         return _empty_result(query_str, tokens, start)
@@ -43,27 +53,36 @@ def search(
     else:
         candidates = _or_candidates(index, active_tokens)
 
+    if not candidates:
+        return _empty_result(query_str, tokens, start)
+
     scored = [
         {
-            "doc_id":  doc_id,
-            "score":   round(bm25.score(active_tokens, doc_id), 4),
+            "doc_id":      doc_id,
+            "bm25_score":  round(bm25.score(active_tokens, doc_id), 4),
             **index.get_doc(doc_id),
         }
         for doc_id in candidates
     ]
+
+    bm25_max = max((r["bm25_score"] for r in scored), default=1.0)
+
+    for result in scored:
+        result["score"] = _blend(result["bm25_score"], result["url"], bm25_max)
+
     scored.sort(key=lambda x: x["score"], reverse=True)
     results = scored[:top_k]
 
     elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
 
     return {
-        "query":        query_str,
-        "tokens":       tokens,
-        "missing":      missing,
-        "mode":         mode,
-        "total_hits":   len(scored),
-        "results":      results,
-        "elapsed_ms":   elapsed_ms,
+        "query":      query_str,
+        "tokens":     tokens,
+        "missing":    missing,
+        "mode":       mode,
+        "total_hits": len(scored),
+        "results":    results,
+        "elapsed_ms": elapsed_ms,
     }
 
 
@@ -89,78 +108,15 @@ def _empty_result(query_str: str, tokens: list[str], start: float) -> dict:
     }
 
 
-def _print_results(response: dict) -> None:
-    print(f"\n  Query      : '{response['query']}'")
-    print(f"  Tokens     : {response['tokens']}")
-    if response["missing"]:
-        print(f"  Not in index: {response['missing']}")
-    print(f"  Mode       : {response['mode']}")
-    print(f"  Hits       : {response['total_hits']} docs")
-    print(f"  Time       : {response['elapsed_ms']}ms")
-    print()
-
-    if not response["results"]:
-        print("  No results found.\n")
-        return
-
-    for i, r in enumerate(response["results"], 1):
-        print(f"  {i}. [{r['score']:.4f}]  {r['title']}")
-        print(f"       {r['url']}")
-    print()
-
-
-def cli() -> None:
-    print("\n" + "=" * 50)
-    print(" Search Engine CLI")
-    print("=" * 50)
-    print(" Commands:")
-    print("   <query>        search with OR mode")
-    print("   and:<query>    search with AND mode")
-    print("   quit           exit")
-    print("=" * 50 + "\n")
-
-    _get_engine()
-
-    while True:
-        try:
-            raw = input("Search: ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print("\nGoodbye.")
-            break
-
-        if not raw:
-            continue
-        if raw.lower() == "quit":
-            print("Goodbye.")
-            break
-
-        if raw.lower().startswith("and:"):
-            query_str = raw[4:].strip()
-            mode = "AND"
-        else:
-            query_str = raw
-            mode = "OR"
-
-        response = search(query_str, top_k=5, mode=mode)
-        _print_results(response)
-
-
 if __name__ == "__main__":
-    print("=== Automated test queries ===\n")
+    print("=== Blended search demo ===\n")
 
-    test_queries = [
-        ("mystery books",   "OR"),
-        ("travel",          "OR"),
-        ("light fantasy",   "AND"),
-        ("price",           "OR"),
-        ("xyznonexistent",  "OR"),
-    ]
-
-    for query_str, mode in test_queries:
-        response = search(query_str, top_k=3, mode=mode)
-        _print_results(response)
-
-    print("\n" + "=" * 50)
-    print("Starting interactive CLI...")
-    print("=" * 50)
-    cli()
+    queries = ["mystery books", "travel adventure", "fantasy"]
+    for q in queries:
+        response = search(q, top_k=3)
+        print(f"Query: '{q}'  ({response['elapsed_ms']}ms)")
+        for i, r in enumerate(response["results"], 1):
+            print(f"  {i}. [{r['score']}]  bm25={r['bm25_score']}  "
+                  f"pr={get_pagerank_score(r['url']):.4f}  "
+                  f"{r['title'][:45]}")
+        print()

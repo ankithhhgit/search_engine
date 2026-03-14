@@ -2,10 +2,11 @@ from pydantic import BaseModel, Field
 
 
 class SearchResult(BaseModel):
-    doc_id: str
-    score: float
-    url: str
-    title: str
+    doc_id:      str
+    score:       float
+    bm25_score:  float
+    url:         str
+    title:       str
     token_count: int
 
 

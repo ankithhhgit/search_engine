@@ -52,6 +52,9 @@ async def add_response_time_header(request: Request, call_next) -> Response:
     return response
 
 
+from indexer.database import get_stats as db_stats, populate as db_populate
+
+# replace the health endpoint with this:
 @app.get(
     "/health",
     response_model=HealthResponse,
@@ -61,8 +64,10 @@ def health():
     if "index" not in state:
         raise HTTPException(status_code=503, detail="Index not loaded")
 
-    index = state["index"]
+    index  = state["index"]
     stats  = index.stats()
+    db     = db_stats()
+
     return HealthResponse(
         status="ok",
         total_docs=stats["total_docs"],
@@ -70,7 +75,6 @@ def health():
         avg_doc_length=stats["avg_doc_length"],
         total_tokens=stats["total_tokens"],
     )
-
 
 @app.get(
     "/search",
