@@ -114,3 +114,16 @@ def search_endpoint(
         elapsed_ms=raw["elapsed_ms"],
         results=raw["results"],
     )
+@app.get("/suggest", include_in_schema=False)
+def suggest(q: str = Query("", min_length=1)):
+    if "index" not in state or not q.strip():
+        return {"suggestions": []}
+
+    index  = state["index"]
+    prefix = q.lower().strip()
+    matches = [
+        term for term in index._index.keys()
+        if term.startswith(prefix)
+    ]
+    matches.sort(key=lambda t: (-index.get_doc_frequency(t), t))
+    return {"suggestions": matches[:8]}

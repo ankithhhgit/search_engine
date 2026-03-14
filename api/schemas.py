@@ -8,6 +8,7 @@ class SearchResult(BaseModel):
     url:         str
     title:       str
     token_count: int
+    snippet:     str = ""
 
 
 class SearchResponse(BaseModel):

@@ -1,3 +1,4 @@
+import json
 import time
 from pathlib import Path
 
@@ -8,8 +9,8 @@ from indexer.text_processor import process
 
 INDEX_PATH = Path("data/index.json")
 
-BM25_WEIGHT      = 0.7
-PAGERANK_WEIGHT  = 0.3
+BM25_WEIGHT     = 0.7
+PAGERANK_WEIGHT = 0.3
 
 _index: InvertedIndex | None = None
 _bm25:  BM25 | None          = None
@@ -29,6 +30,33 @@ def _blend(bm25_score: float, url: str, bm25_max: float) -> float:
     return round(BM25_WEIGHT * normalised_bm25 + PAGERANK_WEIGHT * pr_score, 4)
 
 
+def _make_snippet(doc_id: str, query_tokens: list[str], max_len: int = 160) -> str:
+    clean_path = Path("data/clean") / f"{doc_id}.json"
+    if not clean_path.exists():
+        return ""
+    try:
+        with open(clean_path, encoding="utf-8") as f:
+            page = json.load(f)
+        tokens = page.get("tokens", [])
+        if not tokens:
+            return ""
+        for i, token in enumerate(tokens):
+            if token in query_tokens:
+                start = max(0, i - 10)
+                end   = min(len(tokens), i + 20)
+                snippet_tokens = tokens[start:end]
+                snippet = " ".join(snippet_tokens)
+                if len(snippet) > max_len:
+                    snippet = snippet[:max_len] + "..."
+                return snippet
+        snippet = " ".join(tokens[:30])
+        if len(snippet) > max_len:
+            snippet = snippet[:max_len] + "..."
+        return snippet
+    except Exception:
+        return ""
+
+
 def search(
     query_str: str,
     top_k: int = 10,
@@ -42,8 +70,8 @@ def search(
     if not tokens:
         return _empty_result(query_str, tokens, start)
 
-    missing        = [t for t in tokens if not index.contains(t)]
-    active_tokens  = [t for t in tokens if index.contains(t)]
+    missing       = [t for t in tokens if not index.contains(t)]
+    active_tokens = [t for t in tokens if index.contains(t)]
 
     if not active_tokens:
         return _empty_result(query_str, tokens, start)
@@ -56,14 +84,16 @@ def search(
     if not candidates:
         return _empty_result(query_str, tokens, start)
 
-    scored = [
-        {
-            "doc_id":      doc_id,
-            "bm25_score":  round(bm25.score(active_tokens, doc_id), 4),
-            **index.get_doc(doc_id),
-        }
-        for doc_id in candidates
-    ]
+    # ── build scored list with snippet ──────────────────────
+    scored = []
+    for doc_id in candidates:
+        doc = index.get_doc(doc_id)
+        scored.append({
+            "doc_id":     doc_id,
+            "bm25_score": round(bm25.score(active_tokens, doc_id), 4),
+            "snippet":    _make_snippet(doc_id, active_tokens),
+            **doc,
+        })
 
     bm25_max = max((r["bm25_score"] for r in scored), default=1.0)
 
@@ -118,5 +148,6 @@ if __name__ == "__main__":
         for i, r in enumerate(response["results"], 1):
             print(f"  {i}. [{r['score']}]  bm25={r['bm25_score']}  "
                   f"pr={get_pagerank_score(r['url']):.4f}  "
+                  f"snippet='{r['snippet'][:50]}...'  "
                   f"{r['title'][:45]}")
         print()
