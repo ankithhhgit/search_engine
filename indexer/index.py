@@ -74,6 +74,45 @@ class InvertedIndex:
             "total_tokens": self._total_tokens,
             "avg_doc_length": round(self.get_avg_doc_length(), 2),
         }
+        
+    def save(self, path: Path) -> None:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        data = {
+            "index": {
+                term: postings
+                for term, postings in self._index.items()
+            },
+            "docs": self._docs,
+            "total_tokens": self._total_tokens,
+        }
+
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+
+        size_kb = path.stat().st_size / 1024
+        print(f"Index saved to {path} ({size_kb:.1f} KB)")
+
+    @classmethod
+    def load(cls, path: Path) -> "InvertedIndex":
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"No index found at {path}. Run the crawler first.")
+
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+
+        index = cls()
+        index._index = defaultdict(dict, {
+            term: postings
+            for term, postings in data["index"].items()
+        })
+        index._docs = data["docs"]
+        index._total_tokens = data["total_tokens"]
+
+        print(f"Index loaded from {path} — {index.get_doc_count()} docs, {index.get_vocab_size()} terms")
+        return index
 
     @classmethod
     def build_from_disk(cls, clean_dir: Path = CLEAN_DATA_DIR) -> "InvertedIndex":
@@ -103,67 +142,75 @@ class InvertedIndex:
 if __name__ == "__main__":
     import time
 
+    INDEX_PATH = Path("data/index.json")
+
+    print("=" * 50)
+    print("PHASE 1 — build from disk")
+    print("=" * 50)
     start = time.perf_counter()
     index = InvertedIndex.build_from_disk()
     build_time = time.perf_counter() - start
+    print(f"Build time : {build_time:.3f}s")
+    print(f"Stats      : {index.stats()}\n")
 
-    print(f"\nBuild time: {build_time:.3f}s\n")
+    print("=" * 50)
+    print("PHASE 2 — save to disk")
+    print("=" * 50)
+    start = time.perf_counter()
+    index.save(INDEX_PATH)
+    save_time = time.perf_counter() - start
+    print(f"Save time  : {save_time:.3f}s\n")
 
-    print("=== Corpus statistics (BM25 inputs) ===")
-    stats = index.stats()
-    print(f"  N  (total docs)      : {stats['total_docs']:>8,}")
-    print(f"  V  (vocab size)      : {stats['vocab_size']:>8,}")
-    print(f"  avgdl (avg doc len)  : {stats['avg_doc_length']:>8,.2f}")
-    print(f"  total tokens         : {stats['total_tokens']:>8,}")
+    print("=" * 50)
+    print("PHASE 3 — load from disk")
+    print("=" * 50)
+    start = time.perf_counter()
+    loaded = InvertedIndex.load(INDEX_PATH)
+    load_time = time.perf_counter() - start
+    print(f"Load time  : {load_time:.3f}s\n")
 
-    print("\n=== Per-term statistics ===")
-    test_terms = ["book", "price", "mysteri", "travel", "light"]
-    print(f"  {'term':<12} {'df':>6} {'idf_raw':>10}")
-    print(f"  {'-'*12} {'-'*6} {'-'*10}")
+    print("=" * 50)
+    print("PHASE 4 — round-trip verification")
+    print("=" * 50)
 
-    import math
-    N = stats["total_docs"]
-    for term in test_terms:
-        df = index.get_doc_frequency(term)
-        if df > 0:
-            idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
-        else:
-            idf = 0.0
-        print(f"  {term:<12} {df:>6,} {idf:>10.4f}")
+    test_cases = [
+        ("book",    list(index.get_postings("book").keys())[:1]),
+        ("mysteri", list(index.get_postings("mysteri").keys())[:1]),
+        ("price",   list(index.get_postings("price").keys())[:1]),
+    ]
 
-    print("\n=== Per-doc statistics (sample 5 docs) ===")
-    print(f"  {'doc_id':<14} {'length':>8} {'vs avg':>10}  title")
-    print(f"  {'-'*14} {'-'*8} {'-'*10}  {'-'*30}")
-    avgdl = stats["avg_doc_length"]
-    for doc_id in index.get_all_doc_ids()[:5]:
-        doc = index.get_doc(doc_id)
-        length = index.get_doc_length(doc_id)
-        ratio = length / avgdl if avgdl else 0
-        print(f"  {doc_id[:12]:<14} {length:>8,} {ratio:>9.2f}x  {doc['title'][:35]}")
+    all_passed = True
+    for term, doc_ids in test_cases:
+        if not doc_ids:
+            continue
+        doc_id = doc_ids[0]
 
-    print("\n=== TF spot check ===")
-    term = "book"
-    postings = index.get_postings(term)
-    top5 = sorted(postings.items(), key=lambda x: x[1], reverse=True)[:5]
-    print(f"\n  Top 5 docs by TF for '{term}':")
-    print(f"  {'doc_id':<14} {'tf':>4}  title")
-    print(f"  {'-'*14} {'-'*4}  {'-'*35}")
-    for doc_id, tf in top5:
-        doc = index.get_doc(doc_id)
-        print(f"  {doc_id[:12]:<14} {tf:>4}  {doc['title'][:35]}")
+        original_tf  = index.get_tf(term, doc_id)
+        loaded_tf    = loaded.get_tf(term, doc_id)
+        original_doc = index.get_doc(doc_id)
+        loaded_doc   = loaded.get_doc(doc_id)
 
-    print("\n=== get_tf() helper check ===")
-    if top5:
-        sample_doc_id, expected_tf = top5[0]
-        retrieved_tf = index.get_tf(term, sample_doc_id)
-        match = "PASS" if retrieved_tf == expected_tf else "FAIL"
-        print(f"  get_tf('{term}', '{sample_doc_id[:12]}...')")
-        print(f"  Expected: {expected_tf}  Got: {retrieved_tf}  [{match}]")
+        tf_match  = original_tf == loaded_tf
+        doc_match = original_doc == loaded_doc
+        status    = "PASS" if tf_match and doc_match else "FAIL"
+        if not tf_match or not doc_match:
+            all_passed = False
 
-    print("\n=== All BM25 inputs verified ===")
-    print("  N        -> get_doc_count()")
-    print("  df(t)    -> get_doc_frequency(term)")
-    print("  tf(t,d)  -> get_tf(term, doc_id)")
-    print("  len(d)   -> get_doc_length(doc_id)")
-    print("  avgdl    -> get_avg_doc_length()")
-    print("\nReady for Wednesday — BM25 implementation.")
+        print(f"  [{status}] term='{term}' doc='{doc_id[:10]}...'")
+        print(f"         tf: {original_tf} → {loaded_tf}  |  "
+              f"title: '{original_doc['title'][:30]}'")
+
+    print()
+    if all_passed:
+        print("  All round-trip checks passed.")
+    else:
+        print("  Some checks FAILED — inspect the diffs above.")
+
+    print()
+    print("=" * 50)
+    print("PERFORMANCE SUMMARY")
+    print("=" * 50)
+    print(f"  Build from 100 clean files : {build_time:.3f}s")
+    print(f"  Save to index.json         : {save_time:.3f}s")
+    print(f"  Load from index.json       : {load_time:.3f}s")
+    print(f"  Speedup (build vs load)    : {build_time / load_time:.1f}x faster")
