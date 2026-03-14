@@ -1,13 +1,15 @@
+import time
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from pathlib import Path
 
+from api.schemas import HealthResponse, SearchResponse, ErrorResponse
 from indexer.index import InvertedIndex
 from indexer.bm25 import BM25
-from indexer.query import search
-from pathlib import Path
+from indexer.query import search as engine_search
 
 INDEX_PATH = Path("data/index.json")
 
@@ -19,6 +21,7 @@ async def lifespan(app: FastAPI):
     print("Loading index...")
     state["index"] = InvertedIndex.load(INDEX_PATH)
     state["bm25"]  = BM25(state["index"])
+    state["start_time"] = time.time()
     print(f"Index ready — {state['index'].get_doc_count()} docs loaded")
     yield
     state.clear()
@@ -40,30 +43,63 @@ app.add_middleware(
 )
 
 
-@app.get("/health")
+@app.middleware("http")
+async def add_response_time_header(request: Request, call_next) -> Response:
+    start = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+    response.headers["X-Response-Time"] = f"{elapsed_ms}ms"
+    return response
+
+
+@app.get(
+    "/health",
+    response_model=HealthResponse,
+    summary="Server health and index statistics",
+)
 def health():
     if "index" not in state:
         raise HTTPException(status_code=503, detail="Index not loaded")
 
     index = state["index"]
-    stats = index.stats()
-    return {
-        "status":       "ok",
-        "total_docs":   stats["total_docs"],
-        "vocab_size":   stats["vocab_size"],
-        "avg_doc_length": stats["avg_doc_length"],
-        "total_tokens": stats["total_tokens"],
-    }
+    stats  = index.stats()
+    return HealthResponse(
+        status="ok",
+        total_docs=stats["total_docs"],
+        vocab_size=stats["vocab_size"],
+        avg_doc_length=stats["avg_doc_length"],
+        total_tokens=stats["total_tokens"],
+    )
 
 
-@app.get("/search")
+@app.get(
+    "/search",
+    response_model=SearchResponse,
+    summary="Search indexed documents",
+    responses={
+        400: {"model": ErrorResponse, "description": "Empty query"},
+        503: {"model": ErrorResponse, "description": "Index not ready"},
+    },
+)
 def search_endpoint(
-    q: str = Query(..., min_length=1, description="Search query"),
-    top_k: int = Query(10, ge=1, le=50, description="Number of results to return"),
-    mode: str = Query("OR", pattern="^(OR|AND)$", description="OR or AND query mode"),
+    q: str     = Query(..., min_length=1, description="Search query string"),
+    top_k: int = Query(10, ge=1, le=50,  description="Max results to return"),
+    mode: str  = Query("OR", pattern="^(OR|AND)$", description="OR or AND logic"),
 ):
+    if "index" not in state:
+        raise HTTPException(status_code=503, detail="Index not loaded yet")
+
     if not q.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    response = search(q, top_k=top_k, mode=mode)
-    return response
+    raw = engine_search(q, top_k=top_k, mode=mode)
+
+    return SearchResponse(
+        query=raw["query"],
+        tokens=raw["tokens"],
+        missing=raw["missing"],
+        mode=raw["mode"],
+        total_hits=raw["total_hits"],
+        elapsed_ms=raw["elapsed_ms"],
+        results=raw["results"],
+    )
