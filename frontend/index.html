@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Search Engine</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f8f9fa;
+      color: #202124;
+      min-height: 100vh;
+    }
+
+    #app { max-width: 680px; margin: 0 auto; padding: 0 16px; }
+
+    /* ── header ── */
+    .header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 60px 0 28px;
+      transition: padding 0.2s;
+    }
+    .header.compact { padding: 20px 0 16px; flex-direction: row; gap: 16px; }
+    .logo {
+      font-size: 36px;
+      font-weight: 700;
+      color: #1a73e8;
+      letter-spacing: -1px;
+      margin-bottom: 24px;
+      transition: all 0.2s;
+    }
+    .header.compact .logo { font-size: 22px; margin-bottom: 0; }
+
+    /* ── search bar ── */
+    .search-wrap {
+      width: 100%;
+      max-width: 560px;
+      position: relative;
+    }
+    .search-bar {
+      display: flex;
+      align-items: center;
+      background: #fff;
+      border: 1px solid #dfe1e5;
+      border-radius: 24px;
+      padding: 10px 16px;
+      gap: 10px;
+      transition: box-shadow 0.15s;
+    }
+    .search-bar:focus-within {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      border-color: transparent;
+    }
+    .search-icon { color: #9aa0a6; flex-shrink: 0; }
+    #search-input {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 16px;
+      background: transparent;
+      color: #202124;
+    }
+    #clear-btn {
+      display: none;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #9aa0a6;
+      padding: 2px;
+      font-size: 18px;
+      line-height: 1;
+    }
+    #clear-btn:hover { color: #5f6368; }
+
+    /* ── mode toggle ── */
+    .mode-wrap {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      justify-content: center;
+    }
+    .header.compact .mode-wrap { margin-top: 0; }
+    .mode-btn {
+      font-size: 12px;
+      padding: 4px 12px;
+      border-radius: 12px;
+      border: 1px solid #dfe1e5;
+      background: #fff;
+      cursor: pointer;
+      color: #5f6368;
+      transition: all 0.15s;
+    }
+    .mode-btn.active {
+      background: #e8f0fe;
+      border-color: #c5d4f7;
+      color: #1a73e8;
+      font-weight: 500;
+    }
+
+    /* ── results meta ── */
+    #results-meta {
+      font-size: 13px;
+      color: #70757a;
+      padding: 8px 0 16px;
+      display: none;
+    }
+
+    /* ── result cards ── */
+    .result {
+      background: #fff;
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 10px;
+      transition: box-shadow 0.15s;
+    }
+    .result:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+
+    .result-url {
+      font-size: 12px;
+      color: #202124;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .result-url .domain { color: #202124; font-weight: 500; }
+    .result-url .path   { color: #5f6368; }
+
+    .result-title {
+      font-size: 18px;
+      font-weight: 400;
+      margin-bottom: 6px;
+    }
+    .result-title a {
+      color: #1a0dab;
+      text-decoration: none;
+    }
+    .result-title a:hover { text-decoration: underline; }
+    .result-title mark {
+      background: #fff3cd;
+      color: inherit;
+      border-radius: 2px;
+      padding: 0 1px;
+    }
+
+    .result-snippet {
+      font-size: 14px;
+      color: #4d5156;
+      line-height: 1.6;
+    }
+    .result-snippet mark {
+      background: #fff3cd;
+      color: inherit;
+      border-radius: 2px;
+      padding: 0 1px;
+    }
+
+    .result-meta {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+      align-items: center;
+    }
+    .score-badge {
+      font-size: 11px;
+      background: #e8f0fe;
+      color: #1a73e8;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 500;
+    }
+    .token-count {
+      font-size: 11px;
+      color: #9aa0a6;
+    }
+
+    /* ── states ── */
+    #loading {
+      display: none;
+      text-align: center;
+      padding: 40px 0;
+      color: #5f6368;
+      font-size: 14px;
+    }
+    .spinner {
+      width: 24px; height: 24px;
+      border: 2px solid #e8eaed;
+      border-top-color: #1a73e8;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #empty-state {
+      display: none;
+      text-align: center;
+      padding: 60px 0;
+      color: #5f6368;
+    }
+    #empty-state .big { font-size: 40px; margin-bottom: 12px; }
+    #empty-state p { font-size: 14px; }
+
+    #error-state {
+      display: none;
+      background: #fce8e6;
+      border: 1px solid #f5c6c2;
+      border-radius: 8px;
+      padding: 16px;
+      color: #c5221f;
+      font-size: 14px;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <div class="header" id="header">
+    <div class="logo">search</div>
+    <div class="search-wrap">
+      <div class="search-bar">
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input
+          id="search-input"
+          type="text"
+          placeholder="Search..."
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button id="clear-btn" title="Clear">&#x2715;</button>
+      </div>
+      <div class="mode-wrap">
+        <button class="mode-btn active" data-mode="OR"  onclick="setMode('OR')">OR — any term</button>
+        <button class="mode-btn"        data-mode="AND" onclick="setMode('AND')">AND — all terms</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="results-meta"></div>
+  <div id="loading"><div class="spinner"></div>Searching...</div>
+  <div id="results"></div>
+  <div id="empty-state">
+    <div class="big">&#128269;</div>
+    <p>No results found for your query.</p>
+    <p style="margin-top:6px;font-size:12px;">Try different keywords or switch to OR mode.</p>
+  </div>
+  <div id="error-state"></div>
+
+</div>
+
+<script>
+  const API = "http://localhost:8000";
+  let currentMode = "OR";
+  let searchTimer = null;
+
+  const input     = document.getElementById("search-input");
+  const clearBtn  = document.getElementById("clear-btn");
+  const header    = document.getElementById("header");
+  const metaEl    = document.getElementById("results-meta");
+  const loadingEl = document.getElementById("loading");
+  const resultsEl = document.getElementById("results");
+  const emptyEl   = document.getElementById("empty-state");
+  const errorEl   = document.getElementById("error-state");
+
+  // ── mode toggle ──────────────────────────────────────────
+  function setMode(mode) {
+    currentMode = mode;
+    document.querySelectorAll(".mode-btn").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.mode === mode);
+    });
+    if (input.value.trim()) triggerSearch();
+  }
+
+  // ── clear button ─────────────────────────────────────────
+  input.addEventListener("input", () => {
+    clearBtn.style.display = input.value ? "block" : "none";
+  });
+  clearBtn.addEventListener("click", () => {
+    input.value = "";
+    clearBtn.style.display = "none";
+    clearAll();
+    input.focus();
+  });
+
+  // ── search on Enter ───────────────────────────────────────
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+      clearTimeout(searchTimer);
+      triggerSearch();
+    }
+  });
+
+  // ── debounced search on type ──────────────────────────────
+  input.addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    const q = input.value.trim();
+    if (!q) { clearAll(); return; }
+    searchTimer = setTimeout(triggerSearch, 400);
+  });
+
+  // ── main search ───────────────────────────────────────────
+  async function triggerSearch() {
+    const q = input.value.trim();
+    if (!q) return;
+
+    setLoading(true);
+    header.classList.add("compact");
+
+    try {
+      const url = `${API}/search?q=${encodeURIComponent(q)}&top_k=10&mode=${currentMode}`;
+      const res  = await fetch(url);
+
+      if (!res.ok) {
+        const err = await res.json();
+        showError(`API error ${res.status}: ${err.detail || "Unknown error"}`);
+        return;
+      }
+
+      const data = await res.json();
+      renderResults(data);
+
+    } catch (err) {
+      showError("Could not reach the search server. Is it running?");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ── render ────────────────────────────────────────────────
+  function renderResults(data) {
+    hideAll();
+
+    metaEl.style.display = "block";
+    metaEl.textContent =
+      `About ${data.total_hits.toLocaleString()} result${data.total_hits !== 1 ? "s" : ""} ` +
+      `(${data.elapsed_ms}ms)` +
+      (data.missing.length ? `  —  terms not found: ${data.missing.join(", ")}` : "");
+
+    if (!data.results.length) {
+      emptyEl.style.display = "block";
+      return;
+    }
+
+    const queryTerms = data.tokens;
+    resultsEl.innerHTML = data.results.map(r => buildCard(r, queryTerms)).join("");
+  }
+
+  function buildCard(result, queryTerms) {
+    const parsed   = tryParseURL(result.url);
+    const domain   = parsed ? parsed.hostname : result.url;
+    const path     = parsed ? parsed.pathname : "";
+    const title    = highlight(result.title, queryTerms);
+
+    return `
+      <div class="result">
+        <div class="result-url">
+          <span class="domain">${escHtml(domain)}</span>
+          <span class="path">${escHtml(path)}</span>
+        </div>
+        <div class="result-title">
+          <a href="${escHtml(result.url)}" target="_blank" rel="noopener">${title}</a>
+        </div>
+        <div class="result-meta">
+          <span class="score-badge">score ${result.score.toFixed(3)}</span>
+          <span class="token-count">${result.token_count.toLocaleString()} tokens</span>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── highlight matched terms ───────────────────────────────
+  function highlight(text, terms) {
+    if (!terms.length) return escHtml(text);
+    let safe = escHtml(text);
+    terms.forEach(term => {
+      const re = new RegExp(`(${escRegex(term)})`, "gi");
+      safe = safe.replace(re, "<mark>$1</mark>");
+    });
+    return safe;
+  }
+
+  // ── helpers ───────────────────────────────────────────────
+  function setLoading(on) {
+    loadingEl.style.display = on ? "block" : "none";
+    if (on) hideAll();
+  }
+
+  function clearAll() {
+    hideAll();
+    header.classList.remove("compact");
+    metaEl.style.display = "none";
+  }
+
+  function hideAll() {
+    resultsEl.innerHTML = "";
+    emptyEl.style.display  = "none";
+    errorEl.style.display  = "none";
+    metaEl.style.display   = "none";
+  }
+
+  function showError(msg) {
+    errorEl.textContent = msg;
+    errorEl.style.display = "block";
+  }
+
+  function tryParseURL(url) {
+    try { return new URL(url); } catch { return null; }
+  }
+
+  function escHtml(str) {
+    return str.replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;",
+      '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  function escRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+</script>
+</body>
+</html>

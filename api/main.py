@@ -10,6 +10,8 @@ from api.schemas import HealthResponse, SearchResponse, ErrorResponse
 from indexer.index import InvertedIndex
 from indexer.bm25 import BM25
 from indexer.query import search as engine_search
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 INDEX_PATH = Path("data/index.json")
 
@@ -34,6 +36,11 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
+
+@app.get("/", include_in_schema=False)
+def serve_frontend():
+    return FileResponse("frontend/index.html")
 
 app.add_middleware(
     CORSMiddleware,
