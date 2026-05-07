@@ -19,15 +19,20 @@ state: dict[str, Any] = {}
 
 
 @asynccontextmanager
+@asynccontextmanager
 async def lifespan(app: FastAPI):
+    import nltk
+    for pkg in ["stopwords", "punkt", "punkt_tab"]:
+        nltk.download(pkg, quiet=True)
+
     print("Loading index...")
-    state["index"] = InvertedIndex.load(INDEX_PATH)
-    state["bm25"]  = BM25(state["index"])
+    state["index"]      = InvertedIndex.load(INDEX_PATH)
+    state["bm25"]       = BM25(state["index"])
     state["start_time"] = time.time()
     print(f"Index ready — {state['index'].get_doc_count()} docs loaded")
     yield
     state.clear()
-    print("Server shutting down — index cleared")
+    print("Server shutting down")
 
 
 app = FastAPI(
